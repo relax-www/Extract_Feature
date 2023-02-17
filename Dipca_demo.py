@@ -5,6 +5,9 @@ import matplotlib.pyplot as plt
 from scipy.io import loadmat
 import scipy.stats
 from sklearn.model_selection import KFold
+import pandas as pd
+import dat
+
 
 plt.rcParams['font.sans-serif']=['SimHei'] #用来正常显示中文标签
 plt.rcParams['axes.unicode_minus']=False #用来正常显示负号
@@ -52,7 +55,7 @@ def fit_DiPCA(X, s, a):
     W = np.zeros((m, a))
     T = np.zeros((n, a))
     w = np.ones(m)
-    w = w / np.linalg.norm(w, ord=2)
+    w = w / np.linalg.norm(w, ord=2)#二范数
 
     if s > 0:
         # Dynamic Inner Modeling
@@ -71,6 +74,7 @@ def fit_DiPCA(X, s, a):
                 for i in range(s):
                     w = w + beta[i]*(np.dot(X[s:N+s-1, :].T, t[i:N+i-1]) +
                                      np.dot(X[i:N+i-1].T, t[s:N+s-1]))
+                    #有问题
                 w = w / np.linalg.norm(w, ord=2)
                 t = np.dot(X, w)
                 iterative_error = np.linalg.norm((t-temp), ord=2)
@@ -95,11 +99,11 @@ def fit_DiPCA(X, s, a):
         Xe = Xe-np.dot(np.dot(TT, Theta_hat), P.T)
        # Calculate the control limit
         a_v = pc_number(V)
-        _, Sv, Pv = np.linalg.svd(V)
+        _, Sv, Pv = np.linalg.svd(V)#Sv是一维的
         Pv = Pv.T
         Pv = Pv[:, 0:a_v]
         lambda_v = (1/(N-1)*np.diag(Sv[0:a_v]**2))
-        Tv2_lim = a_v * (N ** 2 - 1) / (N * (N - a_v))* scipy.stats.f.ppf(level, a_v, N-a_v)
+        Tv2_lim = a_v * (N ** 2 - 1) / (N * (N - a_v))* scipy.stats.f.ppf(level, a_v, N-a_v)#T2
         if a_v == a:
             PHI_v = np.dot(np.dot(Pv, np.linalg.inv(lambda_v)), Pv.T)
             phi_v_lim=Tv2_lim
@@ -111,7 +115,7 @@ def fit_DiPCA(X, s, a):
             SS_v = 1/(N-1)*V.T@V
             g_phi_v = np.trace((SS_v@PHI_v)@(SS_v@PHI_v))/(np.trace(SS_v@PHI_v))
             h_phi_v = (np.trace(SS_v@PHI_v)**2)/np.trace((SS_v@PHI_v)@(SS_v@PHI_v))
-            phi_v_lim = g_phi_v*scipy.stats.chi2.ppf(level, h_phi_v)
+            phi_v_lim = g_phi_v*scipy.stats.chi2.ppf(level, h_phi_v)#卡方分布    对t的偏差做分析
         # if a_v != a: # 注意是否T^2和Q都存在
         #     gv = 1/(N-1)*sum(Sv[a_v:a]**4)/sum(Sv[a_v:a]**2)
         #     hv = (sum(Sv[a_v:a]**2)**2)/sum(Sv[a_v:a]**4)
@@ -148,7 +152,7 @@ def fit_DiPCA(X, s, a):
         g_phi_s = np.trace((SS_s@PHI_s)@(SS_s@PHI_s))/(np.trace(SS_s@PHI_s))
         h_phi_s = (np.trace(SS_s@PHI_s)**2)/np.trace((SS_s@PHI_s)@(SS_s@PHI_s))
         phi_s_lim = g_phi_s*scipy.stats.chi2.ppf(level, h_phi_s)
-    return P, W, Theta_hat, PHI_v, PHI_s, phi_v_lim, phi_s_lim
+    return P, W, Theta_hat, PHI_v, PHI_s, phi_v_lim, phi_s_lim#动态部分+静态部分
 
 def test_DiPCA(X,P,W,Theta,s,PHI_s,PHI_v):
     """
@@ -215,7 +219,7 @@ def cv_DiPCA(X,s_range,a_range,fold):
     DiPCA交叉验证选取主元数
     输入：X 训练数据,s_range 选择滞后阶数最大值,a_range 选择潜变量最大值, fold 交叉验证的折数,
     """
-    kf = KFold(n_splits=fold,random_state=1,shuffle=False)
+    kf = KFold(n_splits=fold,shuffle=True,random_state=1)
     press=np.zeros((s_range,a_range,fold), float)
     for i in range(s_range):
         for j in range(a_range):
@@ -227,6 +231,7 @@ def cv_DiPCA(X,s_range,a_range,fold):
                 X_predict=predict_DiPCA(X_valid,P,W,Theta_hat, i+1)#预测
                 press[i][j][count-1]=np.linalg.norm(X_valid-X_predict,ord=2)**2/X_valid.shape[0]
     press=np.sum(press, axis=2)
+    print(press)
     (s,a)=np.where(press==np.min(press))#选择press最小作为s,a
     s+=1
     a+=1
@@ -260,7 +265,7 @@ def visualization_DiPCA(phi_v_index,phi_s_index,phi_v_lim,phi_s_lim):
         参数
         ----------
     """
-    plt.figure(figsize=(9.6,6.4),dpi=300)
+    plt.figure(figsize=(3,3),dpi=300)
     ax1 = plt.subplot(2,1,1)
     ax1.plot(phi_v_index)
     ax1.plot(phi_v_lim*np.ones(len(phi_v_index)),'r--')
@@ -269,25 +274,28 @@ def visualization_DiPCA(phi_v_index,phi_s_index,phi_v_lim,phi_s_lim):
     ax1.set_title('monitor')
     ax2 = plt.subplot(2,1,2)
     ax2.plot(phi_s_index)
-    ax2.plot(phi_s_lim*np.ones(len(phi_s_index)),'r--')
+    ax2.plot(phi_s_lim*np.ones(len(phi_s_index)),'r--')#红色直线
     ax2.set_xlabel('Samples')
     ax2.set_ylabel('$\phi_s$')
     plt.show()
 
-x_train= loadmat("./data/d00.mat")['d00']
-x_test = loadmat("./data/d05te.mat")['d05te']
-x_train=np.array(x_train)
-x_test=np.array(x_test)
+# x_train= loadmat("./data/d00.mat")['d00']
+# x_test = loadmat("./data/d05te.mat")['d05te']
+
+x_train=dat.read_dat("./TE/train/d00.dat")
+x_test=dat.read_dat("./TE/test/d01_te.dat")
+
 # X_train, X_mean, X_s = autos(x_train)
 # X_test = autos_test(x_test, X_mean, X_s)
 X_train, X_test = normalize(x_train, x_test)
-s_range=2
+s_range=3
 a_range=5
 fold=5
 [s,a]=cv_DiPCA(X_train,s_range,a_range,fold)#交叉验证选取主元数
 # P,W,Theta,Ps,lambda_s,PHI_v,phi_v_lim,Ts2_lim ,Qs_lim = DiPCA(X_train, s, a);#建模
 P, W, Theta_hat, PHI_v, PHI_s, phi_v_lim, phi_s_lim = fit_DiPCA(X_train, s, a);#建模
 phi_v_index, phi_s_index = test_DiPCA(X_test, P, W, Theta_hat, s, PHI_s, PHI_v);# 测试
-# print(phi_v_lim, phi_s_lim)
+print(phi_v_lim, phi_s_lim)
+print(s,a)
 # DiPCA_visualization(phi_v_index,Ts_index,Qs_index,phi_v_lim,Ts2_lim,Qs_lim);# 监测结果可视化
 visualization_DiPCA(phi_v_index, phi_s_index, phi_v_lim, phi_s_lim);# 监测结果可视化
