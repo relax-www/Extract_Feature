@@ -74,7 +74,7 @@ def fit_DiPCA(X, s, a):
                 for i in range(s):
                     w = w + beta[i]*(np.dot(X[s:N+s-1, :].T, t[i:N+i-1]) +
                                      np.dot(X[i:N+i-1].T, t[s:N+s-1]))
-                    #有问题
+                    #有问题   以下部分是为了进行故障诊断
                 w = w / np.linalg.norm(w, ord=2)
                 t = np.dot(X, w)
                 iterative_error = np.linalg.norm((t-temp), ord=2)
@@ -95,22 +95,36 @@ def fit_DiPCA(X, s, a):
         for j in range(1, s):
             TT = np.c_[TT, T[j:(N+j), :]]
         Theta_hat = np.dot(np.dot(np.linalg.inv(np.dot(TT.T, TT)), TT.T), T[s:N+s, :])
+        # 使用动态部分的tk-tk_hat  来得到动态部分变化率
         V = T[s:N+s, :] - TT @ Theta_hat
+
         Xe = Xe-np.dot(np.dot(TT, Theta_hat), P.T)
        # Calculate the control limit
+       #  按照论文要求对V做PCA，a_v是0.85的有多少主成分
         a_v = pc_number(V)
         _, Sv, Pv = np.linalg.svd(V)#Sv是一维的
         Pv = Pv.T
         Pv = Pv[:, 0:a_v]
+        # lamda_V代表特征值除以N-1   其中N是样本数
         lambda_v = (1/(N-1)*np.diag(Sv[0:a_v]**2))
-        Tv2_lim = a_v * (N ** 2 - 1) / (N * (N - a_v))* scipy.stats.f.ppf(level, a_v, N-a_v)#T2
+        Tv2_lim = a_v * (N ** 2 - 1) / (N * (N - a_v))* scipy.stats.f.ppf(level, a_v, N-a_v)#T2分布
         if a_v == a:
             PHI_v = np.dot(np.dot(Pv, np.linalg.inv(lambda_v)), Pv.T)
             phi_v_lim=Tv2_lim
         else:
+            # 此规则可以在往期论文中找到
             gv = 1/(N-1)*sum(Sv[a_v:a]**4)/sum(Sv[a_v:a]**2)
             hv = (sum(Sv[a_v:a]**2)**2)/sum(Sv[a_v:a]**4)
-            Qv_lim = gv*scipy.stats.chi2.ppf(level, hv)
+            Qv_lim = gv*scipy.stats.chi2.ppf(level, hv)#卡方分布
+            #   常规的Qlim求解  此处不适用
+            theta1 = np.sum((Sv[a_v:]) ** 1)
+            theta2 = np.sum((Sv[a_v:]) ** 2)
+            theta3 = np.sum((Sv [a_v:]) ** 3)
+            h0 = 1 - (2 * theta1 * theta3) / (3 * (theta2 ** 2))
+            c_alpha = scipy.stats.norm.ppf(level)
+            spe_limit = theta1 * ((h0 * c_alpha * ((2 * theta2) ** 0.5)
+                                   / theta1 + 1 + theta2 * h0 * (h0 - 1) / (theta1 ** 2)) ** (1 / h0))
+
             PHI_v = np.dot(np.dot(Pv, np.linalg.inv(lambda_v)), Pv.T)/Tv2_lim + (np.identity(len(Pv@Pv.T))-Pv@Pv.T)/Qv_lim
             SS_v = 1/(N-1)*V.T@V
             g_phi_v = np.trace((SS_v@PHI_v)@(SS_v@PHI_v))/(np.trace(SS_v@PHI_v))
@@ -258,19 +272,19 @@ def cv_DiPCA(X,s_range,a_range,fold):
 #     ax3.set_ylabel('$Q_s$')
 #     plt.show()
 
-def visualization_DiPCA(phi_v_index,phi_s_index,phi_v_lim,phi_s_lim):
+def   visualization_DiPCA(phi_v_index,phi_s_index,phi_v_lim,phi_s_lim):
     """
         DiPCA可视化
         目前主要是三个监控指标，包括动态综合指标,静态T2指标和静态指标
         参数
         ----------
     """
-    plt.figure(figsize=(3,3),dpi=300)
+    plt.figure(figsize=(8,4),dpi=200)
     ax1 = plt.subplot(2,1,1)
     ax1.plot(phi_v_index)
     ax1.plot(phi_v_lim*np.ones(len(phi_v_index)),'r--')
     ax1.set_xlabel('Samples')
-    ax1.set_ylabel('$\phi_v$')
+    ax1.set_ylabel('$\phi_v$')#转义字符
     ax1.set_title('monitor')
     ax2 = plt.subplot(2,1,2)
     ax2.plot(phi_s_index)
@@ -282,20 +296,32 @@ def visualization_DiPCA(phi_v_index,phi_s_index,phi_v_lim,phi_s_lim):
 # x_train= loadmat("./data/d00.mat")['d00']
 # x_test = loadmat("./data/d05te.mat")['d05te']
 
-x_train=dat.read_dat("./TE/train/d00.dat")
-x_test=dat.read_dat("./TE/test/d01_te.dat")
 
-# X_train, X_mean, X_s = autos(x_train)
-# X_test = autos_test(x_test, X_mean, X_s)
-X_train, X_test = normalize(x_train, x_test)
-s_range=3
-a_range=5
-fold=5
-[s,a]=cv_DiPCA(X_train,s_range,a_range,fold)#交叉验证选取主元数
-# P,W,Theta,Ps,lambda_s,PHI_v,phi_v_lim,Ts2_lim ,Qs_lim = DiPCA(X_train, s, a);#建模
-P, W, Theta_hat, PHI_v, PHI_s, phi_v_lim, phi_s_lim = fit_DiPCA(X_train, s, a);#建模
-phi_v_index, phi_s_index = test_DiPCA(X_test, P, W, Theta_hat, s, PHI_s, PHI_v);# 测试
-print(phi_v_lim, phi_s_lim)
-print(s,a)
-# DiPCA_visualization(phi_v_index,Ts_index,Qs_index,phi_v_lim,Ts2_lim,Qs_lim);# 监测结果可视化
-visualization_DiPCA(phi_v_index, phi_s_index, phi_v_lim, phi_s_lim);# 监测结果可视化
+if __name__ == "__main__":
+    x_train=dat.read_dat("./TE/train/d00.dat")
+    x_test=dat.read_dat("./TE/test/d01_te.dat")
+    # X_train, X_mean, X_s = autos(x_train)
+    # X_test = autos_test(x_test, X_mean, X_s)
+    X_train, X_test = normalize(x_train, x_test)
+    s_range=3
+    a_range=5
+    fold=5
+    [s,a]=cv_DiPCA(X_train,s_range,a_range,fold)#交叉验证选取主元数
+    # P,W,Theta,Ps,lambda_s,PHI_v,phi_v_lim,Ts2_lim ,Qs_lim = DiPCA(X_train, s, a);#建模
+    P, W, Theta_hat, PHI_v, PHI_s, phi_v_lim, phi_s_lim = fit_DiPCA(X_train, s, a);#建模
+    phi_v_index, phi_s_index = test_DiPCA(X_test, P, W, Theta_hat, s, PHI_s, PHI_v);# 测试
+    print(phi_v_lim, phi_s_lim)
+    print(s,a)
+
+
+
+    # DiPCA_visualization(phi_v_index,Ts_index,Qs_index,phi_v_lim,Ts2_lim,Qs_lim);# 监测结果可视化
+    visualization_DiPCA(phi_v_index, phi_s_index, phi_v_lim, phi_s_lim);# 监测结果可视化
+    loc = np.where(phi_v_index == np.min(phi_v_index))
+    a = np.ones(len(phi_v_index))
+    b = np.min(phi_v_index)
+    SI_v = [(phi_v_lim - phi_v_index[i]) / (phi_v_index[i] - np.min(phi_v_index)) for i in range(phi_v_index.shape[0])]
+    plt.figure(figsize=(8,4),dpi=200)
+    plt.plot(SI_v)
+    plt.show()
+

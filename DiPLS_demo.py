@@ -1,14 +1,22 @@
 from DiPLS_FaultDection import DiPLS_FaultDection
 from scipy.io import loadmat
 import numpy as np
-path_train = './data/d00te.mat'
-path_test= './data/d01te.mat'
-data1 = loadmat(path_train)['d00te']
+import dat
+
+path_train = "./TE/train/d00.dat"
+path_test= "./TE/test/d12_te.dat"
+
+data1=dat.read_dat(path_train)
+data2=dat.read_dat(path_test)
+# data1 = loadmat(path_train)['d00te']
+
 X1 = data1[:,:22]
 X2 = data1[:,-11:]
 X_Train= np.hstack((X1,X2))
 Y_Train = data1[:,34:36]
-data2 = loadmat(path_test)['d01te']
+
+# data2 = loadmat(path_test)['d05te']
+
 X11 = data2[:,:22]
 X22 = data2[:,-11:]
 X_test = np.hstack((X11,X22))
@@ -54,3 +62,4 @@ testresult = DiPLS_FaultDection.test(model,X_test)
 """
 #检测结果可视化
 DiPLS_FaultDection.visualization(model,testresult)
+DiPLS_FaultDection.predict(model,X_test)

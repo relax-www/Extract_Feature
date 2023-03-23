@@ -124,8 +124,9 @@ class DiPLS_FaultDection():
         t = X_test@R
         y_predict=np.zeros([X_test.shape[0],1])
         for i in range(self.s+1, X_test.shape[0]):
-            y_predict[i]=(np.multiply(model['Alpha'],t[i:i-self.s-1:-1])).sum(axis=0)@model['Q'].T
-        y_predict[self.s]=(np.multiply(model['Alpha'],t[self.s::-1])).sum(axis=0)@model['Q'].T
+            a=t[i:i - self.s - 1:-1]
+            y_predict[i]=(np.multiply(model['Alpha'].T,t[i:i-self.s-1:-1])).sum(axis=0)@model['Q'].T
+        y_predict[self.s]=(np.multiply(model['Alpha'].T,t[self.s::-1])).sum(axis=0)@model['Q'].T
         return(y_predict)
 
     def visualization(self, model,testresult):
